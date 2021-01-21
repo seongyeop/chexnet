@@ -60,7 +60,7 @@ def runTrain():
 
 def runTest():
     
-    pathDirData = './database'
+    pathDirData = '/mnt/hard2/seongyeop/dataset/ChestX14/image'
     pathFileTest = './dataset/test_1.txt'
     nnArchitecture = 'DENSE-NET-121'
     nnIsTrained = True

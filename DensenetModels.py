@@ -10,6 +10,7 @@ from torch.utils.data import DataLoader
 from sklearn.metrics import roc_auc_score
 
 import torchvision
+from DensenetArc import densenet121
 
 class DenseNet121(nn.Module):
 
@@ -17,15 +18,15 @@ class DenseNet121(nn.Module):
 	
         super(DenseNet121, self).__init__()
 		
-        self.densenet121 = torchvision.models.densenet121(pretrained=isTrained)
+        self.densenet121 = densenet121(pretrained=isTrained)
 
         kernelCount = self.densenet121.classifier.in_features
 		
         self.densenet121.classifier = nn.Sequential(nn.Linear(kernelCount, classCount), nn.Sigmoid())
 
     def forward(self, x):
-        x = self.densenet121(x)
-        return x
+        fi, infer_out = self.densenet121(x)
+        return fi, infer_out
 
 class DenseNet169(nn.Module):
     

@@ -3,6 +3,7 @@ import numpy as np
 import time
 import sys
 
+from torch.autograd import Variable
 import torch
 import torch.nn as nn
 import torch.backends.cudnn as cudnn
@@ -13,8 +14,8 @@ import torch.nn.functional as tfunc
 from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 import torch.nn.functional as func
-
-from sklearn.metrics.ranking import roc_auc_score
+from tqdm import tqdm
+from sklearn.metrics import roc_auc_score
 
 from DensenetModels import DenseNet121
 from DensenetModels import DenseNet169
@@ -115,7 +116,7 @@ class ChexnetTrainer ():
         
         for batchID, (input, target) in enumerate (dataLoader):
                         
-            target = target.cuda(async = True)
+            target = target.cuda(device=None, non_blocking=False)
                  
             varInput = torch.autograd.Variable(input)
             varTarget = torch.autograd.Variable(target)         
@@ -140,7 +141,7 @@ class ChexnetTrainer ():
         
         for i, (input, target) in enumerate (dataLoader):
             
-            target = target.cuda(async=True)
+            target = target.cuda(device=None, non_blocking=False)
                  
             varInput = torch.autograd.Variable(input, volatile=True)
             varTarget = torch.autograd.Variable(target, volatile=True)    
@@ -209,6 +210,10 @@ class ChexnetTrainer ():
         model = torch.nn.DataParallel(model).cuda() 
         
         modelCheckpoint = torch.load(pathModel)
+        modelCheckpoint['state_dict'] = { k.replace('norm.1', 'norm1'): v for k, v in modelCheckpoint['state_dict'].items() }
+        modelCheckpoint['state_dict'] = { k.replace('conv.1', 'conv1'): v for k, v in modelCheckpoint['state_dict'].items() }
+        modelCheckpoint['state_dict'] = { k.replace('norm.2', 'norm2'): v for k, v in modelCheckpoint['state_dict'].items() }
+        modelCheckpoint['state_dict'] = { k.replace('conv.2', 'conv2'): v for k, v in modelCheckpoint['state_dict'].items() }
         model.load_state_dict(modelCheckpoint['state_dict'])
 
         #-------------------- SETTINGS: DATA TRANSFORMS, TEN CROPS
@@ -229,20 +234,23 @@ class ChexnetTrainer ():
         outPRED = torch.FloatTensor().cuda()
        
         model.eval()
-        
-        for i, (input, target) in enumerate(dataLoaderTest):
-            
-            target = target.cuda()
-            outGT = torch.cat((outGT, target), 0)
-            
-            bs, n_crops, c, h, w = input.size()
-            
-            varInput = torch.autograd.Variable(input.view(-1, c, h, w).cuda(), volatile=True)
-            
-            out = model(varInput)
-            outMean = out.view(bs, n_crops, -1).mean(1)
-            
-            outPRED = torch.cat((outPRED, outMean.data), 0)
+        with torch.no_grad():
+            with tqdm(total=len(dataLoaderTest)) as pbar:
+                for i, (input, target) in enumerate(dataLoaderTest):
+                    
+                    target = target.cuda()
+                    outGT = torch.cat((outGT, target), 0)
+                    
+                    bs, n_crops, c, h, w = input.size()
+                    
+                    varInput = Variable(input.view(-1, c, h, w).cuda(), volatile=True)
+                    
+                    _, out = model(varInput)
+                    outMean = out.view(bs, n_crops, -1).mean(1)
+                    
+                    outPRED = torch.cat((outPRED, outMean.data), 0)
+
+                    pbar.update()
 
         aurocIndividual = ChexnetTrainer.computeAUROC(outGT, outPRED, nnClassCount)
         aurocMean = np.array(aurocIndividual).mean()
